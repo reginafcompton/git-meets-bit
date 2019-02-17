@@ -13,7 +13,7 @@ def calculate_repo_counts(repos_as_json):
     return repo_counts
 
 def calculate_total_commits(repos_as_json):
-    total_commits = 0;
+    total_commits = 0
     for data in repos_as_json:
         if data['fork'] == False:
             commits = requests.get(data['commits_url'] + GITHUB_ACCESS_TOKEN_URL, headers=HEADERS_GITHUB) 
@@ -44,3 +44,17 @@ def calculate_topic_count(repos_as_json):
             topic_count[topic] += 1
 
     return topic_count
+
+def values_from_all_pages(url):
+    all_values = []
+    more_pages = True
+    while more_pages: 
+        print(url)
+        data = requests.get(url).json()
+        all_values.extend(data['values'])
+        if data.get('next'):
+            url = data['next']
+        else:
+            more_pages = False
+
+    return all_values
