@@ -3,28 +3,51 @@ from collections import defaultdict
 
 from config import HEADERS_GITHUB, GITHUB_ACCESS_TOKEN_URL
 
-def calculate_repo_counts(repos_as_json):
-    total_forked_repos = len([c for c in repos_as_json if c['fork'] == True])
-    total_original_repos = len([c for c in repos_as_json if c['fork'] == False])
+def traverse_github_pages(url):
+    '''
+    Github limits the number of items returned by an endpoint. 
+
+    This function traverses pages by looking for the keyword 'next'
+    in the response data. 
+
+    References:
+    https://developer.github.com/v3/guides/traversing-with-pagination
+    https://stackoverflow.com/questions/33878019/how-to-get-data-from-all-pages-in-github-api-with-python
+    '''
+    all_data = []
+    more_pages = True
+    while more_pages: 
+        response = requests.get(url, headers=HEADERS_GITHUB)
+        all_data.extend(response.json())
+        if 'next' in response.links.keys():
+            url = response.links['next']['url']
+        else: 
+            more_pages = False
+
+    return all_data
+
+def calculate_repo_counts(all_repos):
+    total_forked_repos = len([c for c in all_repos if c['fork'] == True])
+    total_original_repos = len([c for c in all_repos if c['fork'] == False])
 
     repo_counts = {'total_forked_repos': total_forked_repos, 
     'total_original_repos': total_original_repos}
     
     return repo_counts
 
-def calculate_total_commits(repos_as_json):
+def calculate_total_commits(all_repos):
     total_commits = 0
-    for data in repos_as_json:
+    for data in all_repos:
         if data['fork'] == False:
             commits = requests.get(data['commits_url'] + GITHUB_ACCESS_TOKEN_URL, headers=HEADERS_GITHUB) 
             total_commits += len(commits.json())
 
     return total_commits
 
-def calculate_language_count(repos_as_json):
+def calculate_language_count(all_repos):
     language_count = defaultdict(int)
 
-    for data in repos_as_json:
+    for data in all_repos:
         languages_data = requests.get(data['languages_url'] + GITHUB_ACCESS_TOKEN_URL, headers=HEADERS_GITHUB)
         languages = languages_data.json().keys()
 
@@ -33,10 +56,10 @@ def calculate_language_count(repos_as_json):
 
     return language_count
 
-def calculate_topic_count(repos_as_json):
+def calculate_topic_count(all_repos):
     topic_count = defaultdict(int)
 
-    for data in repos_as_json:
+    for data in all_repos:
         topics_data = requests.get(data['url'] + '/topics' + GITHUB_ACCESS_TOKEN_URL, headers=HEADERS_GITHUB)
         topics = topics_data.json()['names']
 
@@ -45,7 +68,7 @@ def calculate_topic_count(repos_as_json):
 
     return topic_count
 
-def values_from_all_pages(url):
+def traverse_bitbucket_pages(url):
     all_values = []
     more_pages = True
     while more_pages: 
@@ -57,3 +80,30 @@ def values_from_all_pages(url):
             more_pages = False
 
     return all_values
+
+def aggregate_profile_data(git_data, bit_data):
+    aggregate_data = {}
+
+    summables = ['follower_count', 
+                 'open_issues_count', 
+                 'account_size',
+                 'total_commits']
+    
+    for key in summables:
+        aggregate_data[key] = git_data[key] + bit_data[key]
+
+    total_public_repos = git_data['total_public_repos']
+    for repo_type, count in bit_data['total_public_repos'].items():
+        total_public_repos[repo_type] += count
+    aggregate_data['total_public_repos'] = total_public_repos
+
+    language_count = git_data['language_count']
+    for lang, count in bit_data['language_count'].items():
+        language_count[lang] += count
+    aggregate_data['language_count'] = language_count
+
+    aggregate_data['stars_given_count'] = git_data['stars_given_count']
+    aggregate_data['stargazers_count'] = git_data['stargazers_count']
+    aggregate_data['topic_count'] = git_data['topic_count']
+
+    return aggregate_data

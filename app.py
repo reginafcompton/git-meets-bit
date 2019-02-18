@@ -6,75 +6,56 @@ from flask import jsonify, redirect, url_for
 from flask import Flask
 
 from config import HEADERS_GITHUB, BASE_URL_GITHUB, GITHUB_ACCESS_TOKEN_URL
-from utils import calculate_repo_counts, calculate_total_commits, calculate_language_count, calculate_topic_count, values_from_all_pages
+from utils import traverse_github_pages, calculate_repo_counts, calculate_total_commits, calculate_language_count, calculate_topic_count, traverse_bitbucket_pages, aggregate_profile_data
 
 app = Flask(__name__)
-
-# users/githubusername-bitbucketusername
-@app.route('/api/v1/users/<usernames>', methods=['GET'])
-def user_detail_view(username):
-    git_username, bit_username = usernames.replace('-', ' ').split(' ')
-
-    data = create_github_profile(git_username=git_username,
-                               bit_username=bit_username)
-
-    return jsonify(r.json())
 
 # users?bitbucket=reginacomp&github=reginafcompton
 @app.route('/api/v1/users', methods=['GET'])
 def users_view():
-    git_username = request.args.get('github', '')
-    bit_username = request.args.get('bitbucket', '')
+    git_username = request.args.get('github')
+    bit_username = request.args.get('bitbucket')
 
-    # data = create_github_profile(git_username)
-    data = create_bitbucket_profile(bit_username)
+    git_data = create_github_profile(git_username)
+    bit_data = create_bitbucket_profile(bit_username)
+    aggregate_data = aggregate_profile_data(git_data, bit_data)
 
-    return jsonify(data)
+    return jsonify(aggregate_data)
 
 
 def create_github_profile(git_username):
     base_url_github = BASE_URL_GITHUB + git_username
     profile_data = {}
     
-    # Get all repo data
-    url = base_url_github + '/repos' + GITHUB_ACCESS_TOKEN_URL
-    repos_as_json = requests.get(url, headers=HEADERS_GITHUB).json()
+    url = base_url_github + '/repos' + GITHUB_ACCESS_TOKEN_URL + '&per_page=100'
 
-    # Total number of public repos
-    profile_data['total_public_repos'] = calculate_repo_counts(repos_as_json)
+    all_repos = traverse_github_pages(url)
 
-    # Followers
-    url = base_url_github + '/followers' + GITHUB_ACCESS_TOKEN_URL 
-    resp = requests.get(url, headers=HEADERS_GITHUB)
-    profile_data['follower_count'] = len(resp.json())
+    profile_data['total_public_repos'] = calculate_repo_counts(all_repos)
 
-    # Stars given
-    url = base_url_github + '/starred' + GITHUB_ACCESS_TOKEN_URL
-    resp = requests.get(url, headers=HEADERS_GITHUB)
-    profile_data['stars_given_count'] = len(resp.json())
+    followers_url = base_url_github + '/followers' + GITHUB_ACCESS_TOKEN_URL + '&per_page=100'
+    profile_data['follower_count'] = len(traverse_github_pages(followers_url))
 
-    # Stars received 
-    stargazers_count = sum([data['stargazers_count'] for data in repos_as_json])
+    starred_url = base_url_github + '/starred' + GITHUB_ACCESS_TOKEN_URL + '&per_page=100'
+    profile_data['stars_given_count'] = len(traverse_github_pages(starred_url))
+
+    stargazers_count = 0
+    open_issues_count = 0
+    account_size = 0
+    for data in all_repos:
+        stargazers_count += data['stargazers_count']
+        open_issues_count += data['open_issues_count']
+        account_size += data['size']
+
     profile_data['stargazers_count'] = stargazers_count
-
-    # Open issues
-    open_issues_count = sum([data['open_issues_count'] for data in repos_as_json])
     profile_data['open_issues_count'] = open_issues_count
-
-    # Total commits
-    profile_data['total_commits'] = calculate_total_commits(repos_as_json)
-
-    # Account size
-    account_size = sum([data['size'] for data in repos_as_json])
     profile_data['account_size'] = account_size
-
-    # Languages
-    profile_data['language_count'] = calculate_language_count(repos_as_json)
-    
-    # Topics 
-    profile_data['topic_count'] = calculate_topic_count(repos_as_json)
+    profile_data['total_commits'] = calculate_total_commits(all_repos)
+    profile_data['language_count'] = calculate_language_count(all_repos)
+    profile_data['topic_count'] = calculate_topic_count(all_repos)
 
     return profile_data
+
 
 def create_bitbucket_profile(bit_username):
     # Concept of stars and topics does not apply to Bitbucket
@@ -83,11 +64,11 @@ def create_bitbucket_profile(bit_username):
     
     # Get all repo data
     repos_url = base_url_bitbucket.format(endpoint='repositories', username=bit_username)
-    repositories = values_from_all_pages(repos_url)
+    repositories = traverse_bitbucket_pages(repos_url)
 
     # Followers
     followers_url = base_url_bitbucket.format(endpoint='users', username=bit_username) + '/followers'
-    followers = values_from_all_pages(followers_url)
+    followers = traverse_bitbucket_pages(followers_url)
     profile_data['follower_count'] = len(followers)
 
     total_forked_repos = 0
@@ -95,7 +76,7 @@ def create_bitbucket_profile(bit_username):
     account_size = 0
     language_count = defaultdict(int)
     total_commits = 0 
-    total_issues = 0
+    open_issues_count = 0
     for data in repositories:
         if data.get('parent'):
             total_forked_repos += 1
@@ -109,27 +90,20 @@ def create_bitbucket_profile(bit_username):
 
         if not data.get('parent'):
             commits_url = data['links']['commits']['href']
-            commits = values_from_all_pages(commits_url)
+            commits = traverse_bitbucket_pages(commits_url)
             total_commits += len(commits)
 
         if data['has_issues'] == True:
             issues_url = data['links']['issues']['href']
-            issues = values_from_all_pages(issues_url)
-            total_issues += len(issues)
+            issues = traverse_bitbucket_pages(issues_url)
+            open_issues_count += len(issues)
 
     profile_data['total_public_repos'] = {'total_forked_repos': total_forked_repos, 
                                           'total_original_repos': total_original_repos}
     profile_data['account_size'] = account_size
     profile_data['language_count'] = language_count
     profile_data['total_commits'] = total_commits
-    profile_data['total_issues'] = total_issues
+    profile_data['open_issues_count'] = open_issues_count
+
 
     return profile_data
-    
-
-# TODO: handle pages for Github!
-# This will only give the first "page" of the result set, which is set at 30 items by default. You can use ?per_page=100 to get the maximum ammount but if a user has more than a hundred repos you will need to follow several next URLs in the HTTP Link header send with the response
-
-# TODO: merge both datasets
-
-# TODO: tests + documentation
