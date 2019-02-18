@@ -85,37 +85,40 @@ def create_bitbucket_profile(bit_username):
     repos_url = base_url_bitbucket.format(endpoint='repositories', username=bit_username)
     repositories = values_from_all_pages(repos_url)
 
-    # Total number of public repos
-    # TODO: original vs. forked
-    profile_data['total_public_repos'] = len(repositories)
-
     # Followers
     followers_url = base_url_bitbucket.format(endpoint='users', username=bit_username) + '/followers'
     followers = values_from_all_pages(followers_url)
     profile_data['follower_count'] = len(followers)
 
+    total_forked_repos = 0
+    total_original_repos = 0
     account_size = 0
     language_count = defaultdict(int)
     total_commits = 0 
     total_issues = 0
     for data in repositories:
+        if data.get('parent'):
+            total_forked_repos += 1
+        else:
+            total_original_repos += 1
+
         account_size += data['size']
         
         if data['language']:
             language_count[data['language']] += 1
 
-        # Total commits
         if not data.get('parent'):
             commits_url = data['links']['commits']['href']
             commits = values_from_all_pages(commits_url)
             total_commits += len(commits)
 
-        # Total open issues
         if data['has_issues'] == True:
             issues_url = data['links']['issues']['href']
             issues = values_from_all_pages(issues_url)
             total_issues += len(issues)
 
+    profile_data['total_public_repos'] = {'total_forked_repos': total_forked_repos, 
+                                          'total_original_repos': total_original_repos}
     profile_data['account_size'] = account_size
     profile_data['language_count'] = language_count
     profile_data['total_commits'] = total_commits
@@ -126,8 +129,6 @@ def create_bitbucket_profile(bit_username):
 
 # TODO: handle pages for Github!
 # This will only give the first "page" of the result set, which is set at 30 items by default. You can use ?per_page=100 to get the maximum ammount but if a user has more than a hundred repos you will need to follow several next URLs in the HTTP Link header send with the response
-
-# TODO: make distinction between original vs. forked for Bitbucket
 
 # TODO: merge both datasets
 

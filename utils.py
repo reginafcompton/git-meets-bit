@@ -49,7 +49,6 @@ def values_from_all_pages(url):
     all_values = []
     more_pages = True
     while more_pages: 
-        print(url)
         data = requests.get(url).json()
         all_values.extend(data['values'])
         if data.get('next'):
