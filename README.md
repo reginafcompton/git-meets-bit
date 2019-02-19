@@ -32,6 +32,14 @@ http://127.0.0.1:5000/api/v1/users?github=derekeder&bitbucket=derekeder
 
 N.b., the API does not expect the user to have the same Bitbucket and Github name, which allows for precision but also some flexibility in shaping your query, e.g., merging two different people.
 
+### Tests
+
+`git-meets-bit` includes the early stages of a test suite, using `pytests`. Run them:
+
+```
+pytest
+```
+
 ### Limitations and places that need improvement
 
 Several aspects of this tool need work:
