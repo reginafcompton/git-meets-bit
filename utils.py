@@ -27,8 +27,19 @@ def traverse_github_pages(url):
     return all_data
 
 def calculate_repo_counts(all_repos):
-    total_forked_repos = len([c for c in all_repos if c['fork'] == True])
-    total_original_repos = len([c for c in all_repos if c['fork'] == False])
+    '''
+    Utility function for `create_github_profile`. 
+
+    Iterates over a list of dicts with all repos 
+    belonging to a user to determine the total 
+    number of repos forked and original repos.
+
+    Warning! Not very efficient. The calculations in this function 
+    should be bundled together with others that require 
+    iterating over the repo data.
+    '''
+    total_forked_repos = len([data for data in all_repos if data['fork'] == True])
+    total_original_repos = len([data for data in all_repos if data['fork'] == False])
 
     repo_counts = {'total_forked_repos': total_forked_repos, 
     'total_original_repos': total_original_repos}
